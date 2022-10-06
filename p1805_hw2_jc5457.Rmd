@@ -11,46 +11,84 @@ library(dplyr)
 ```
 
 # Problem 1
-**Loading the NYC transit dataset**
+Below we import and clean data from `NYC_Transit_Subway_Entrance_And_Exit_Data.csv`. The process begins with data import, updates variable names, and selects the columns that will be used in later parts fo this problem. We update `entry` from `yes` / `no` to a logical variable. As part of data import, we specify that `Route` columns 8-11 should be character for consistency with 1-7.
+
 ```{r}
-transit = read_csv("data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv") %>%
-  janitor::clean_names()%>%
-  select(line, station_name, station_latitude, station_longitude,
-         starts_with("route"), entry, vending, entrance_type, ada) %>%
-  mutate(entry = as.logical(recode(entry, "YES" = "TRUE", "NO" = "FALSE")),
-         vending = as.logical(recode(vending, "YES" = "TRUE", "NO" = "FALSE")))
+trans_ent = 
+  read_csv(
+    "data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv",
+    col_types = cols(Route8 = "c", Route9 = "c", Route10 = "c", Route11 = "c")) %>% 
+  janitor::clean_names() %>% 
+  select(
+    line, station_name, station_latitude, station_longitude, 
+    starts_with("route"), entry, exit_only, vending, entrance_type, 
+    ada) %>% 
+  mutate(entry = ifelse(entry == "YES", TRUE, FALSE))
 ```
 
-**Describing the NYC transit dataset**
-* Here, we have the NYC transit data imported, and keep 19 variables from the original csv file, including:`r names(transit)`
+As it stands, these data are not "tidy": route number should be a variable, as should route. That is, to obtain a tidy dataset we would need to convert `route` variables from wide to long format. This will be useful when focusing on specific routes, but may not be necessary when considering questions that focus on station-level variables. 
 
-* And then, we transfer the two character variables "entry" and "vending" into logical variables by `recode` function.
+The following code chunk selects station name and line, and then uses `distinct()` to obtain all unique combinations. As a result, the number of rows in this dataset is the number of unique stations.
 
-**Answering questions**
-* The distinct stations in the dataset includes: `r distinct(transit, line, station_name)`
-* The number of ADA complaint station is `r sum(transit$ada=="TRUE")`
-* The proportion of station entrances / exits without vending allow entrance is `r mean(transit$vending)`
-
-**After reformating data**
 ```{r}
-
+trans_ent %>% 
+  select(station_name, line) %>% 
+  distinct
 ```
-* The number of distinct stations serve the A train is
-* The number of the stations that serve the A train, and are ADA compliant is 
+
+The next code chunk is similar, but filters according to ADA compliance as an initial step. This produces a dataframe in which the number of rows is the number of ADA compliant stations. 
+
+```{r}
+trans_ent %>% 
+  filter(ada == TRUE) %>% 
+  select(station_name, line) %>% 
+  distinct
+```
+
+To compute the proportion of station entrances / exits without vending allow entrance, we first exclude station entrances that do not allow vending. Then, we focus on the `entry` variable -- this logical, so taking the mean will produce the desired proportion (recall that R will coerce logical to numeric in cases like this).
+
+```{r}
+trans_ent %>% 
+  filter(vending == "NO") %>% 
+  pull(entry) %>% 
+  mean
+```
+
+Lastly, we write a code chunk to identify stations that serve the A train, and to assess how many of these are ADA compliant. As a first step, we tidy the data as alluded to previously; that is, we convert `route` from wide to long format. After this step, we can use tools from previous parts of the question (filtering to focus on the A train, and on ADA compliance; selecting and using `distinct` to obtain dataframes with the required stations in rows).
+
+```{r}
+trans_ent %>% 
+  pivot_longer(
+    route1:route11,
+    names_to = "route_num",
+    values_to = "route") %>% 
+  filter(route == "A") %>% 
+  select(station_name, line) %>% 
+  distinct
+
+trans_ent %>% 
+  pivot_longer(
+    route1:route11,
+    names_to = "route_num",
+    values_to = "route") %>% 
+  filter(route == "A", ada == TRUE) %>% 
+  select(station_name, line) %>% 
+  distinct
+```
 
 
 # Problem 2
 **Read, clean, and combine the Mr./Professor. Trash Wheel sheet**
-* give reasonable names
-* omit non-dumpster-specific rows
-* round sports balls and convert into integer, and add a column indicating source of data
-* combine the two data sets
+* Give reasonable names
+* Omit non-dumpster-specific rows
+* Round sports balls and convert into integer, and add a column indicating source of data
+* Combine the two data sets
 ```{r}
 MR = read_excel("data/Trash Wheel Collection Data.xlsx", 
                 sheet = "Mr. Trash Wheel",
                 range = "A2:N550")  %>% 
   janitor::clean_names() %>% 
-  drop_na() %>% 
+  drop_na(dumpster) %>% 
   mutate(sports_balls = as.integer(sports_balls), 
          source = "Mr. Trash Wheel")
 
@@ -58,11 +96,15 @@ PROF = read_excel("data/Trash Wheel Collection Data.xlsx",
                   sheet = "Professor Trash Wheel",
                   range = "A2:M97")  %>% 
   janitor::clean_names() %>% 
-  drop_na() %>% 
+  drop_na(dumpster) %>% 
   mutate(year = as.character(year),
          source = "Professor Trash Wheel")
 
 Trash_Wheel = bind_rows(MR, PROF)
+
+sport_ball = filter (
+  Trash_Wheel, source == "Mr. Trash Wheel" & year == "2020") %>%
+  pull(sports_balls)
 ```
 
 * The number of observations in the resulting dataset is `r count(Trash_Wheel)`,
@@ -70,11 +112,12 @@ Trash_Wheel = bind_rows(MR, PROF)
 * The total weight of trash collected by Professor Trash Wheel is 
 `r sum(subset(Trash_Wheel, source == "Professor Trash Wheel")$weight_tons)`
 * The total number of sports balls collected by Mr. Trash Wheel in 2020 is
-`r sum(subset(Trash_Wheel, source == "Mr. Trash Wheel", year = "2020")$sports_balls)`
+`r sum(sport_ball)`
 
 
 # Problem 3
 **Clean and merge 3 csv files into a single data frame**
+
 1. Clean the data in pols-month.csv. 
 * Use `separate()` to break up the variable `mon` into integer variables `year`, `month`, and `day`; 
 * replace month number with month name; 
@@ -96,14 +139,11 @@ pols_month =
     pols_month,
     month = str_remove(month, "^0+"),
     month = as.numeric(month), 
-    month = my.month.name(month)
+    month = my.month.name(month),
+    year = as.integer(year),
+    president = ifelse(prez_gop == 0, "dem", "gop")
     ) %>% 
-  pivot_longer(
-    prez_gop:rep_dem,
-    names_to = "president",
-    values_to = "pol_value"
-  ) %>%
-  subset(select = -day) 
+  subset(select = -c(day, prez_dem, prez_gop)) 
 ```
 
 2. Clean the data in snp.csv using a similar process to the above. 
@@ -115,7 +155,7 @@ snp =
   separate(date, into = c("month", "day", "year"), "/") %>% 
   mutate(
     month = as.numeric(month),
-    year = as.numeric(year),
+    year = as.integer(year),
     year = ifelse(year > 90, year + 1900, year + 2000),
     month = my.month.name(month),
     ) %>% 
@@ -143,6 +183,9 @@ unemployment =
          October = oct,
          November = nov,
          December = dec) %>% 
+  mutate(
+    year = as.integer(year)
+  ) %>%
   pivot_longer(
     January:December,
     names_to = "month",
@@ -153,20 +196,20 @@ unemployment =
 4. Join the datasets by merging `snp` into `pols`, and merging `unemployment` into the result.
 ```{r}
 pol_snp_unemployment = 
-  merge(pols_month, snp, by = c("year", "month")) %>%
-  merge(unemployment, by = c("year", "month")) 
+  left_join(pols_month, snp) %>%
+  left_join(unemployment) 
 ```
 
 **Description of dataset**
-The `pols_month` dataset has `r `dim(pols_month)[1]` rows and  `r `dim(pols_month)[2]` columns. 
-* The years in this dataset range from `r min(pull(pols_month, year))` to `r max(pull(pols_month, year))`. 
+The `pols_month` dataset has `r nrow(pols_month)` rows and  `r ncol(pols_month)` columns.
+* The years in this dataset range from `r min(pols_month$year)` to `r max(pols_month$year)`. 
 * The variable `president` include character `gop` and `dem`.
-* The variable `pol_value` ranges from `r min(pull(pols_month, pol_value))` to `r max(pull(pols_month, pol_value))`.
+* The variable `pol_value` ranges from `r min(pols_month$pol_value)` to `r max(pols_month$pol_value)`.
 
-The `snp` dataset has `r `dim(snp)[1]` rows and  `r `dim(snp)[2]` columns. 
-* The `year` in this dataset range from `r min(pull(snp, year))` to `r max(pull(snp, year))`. 
-* The variable `snp` ranges from `r min(pull(snp, snp))` to `r max(pull(snp, snp))`.
+The `snp` dataset has `r nrow(snp)` rows and  `r ncol(snp)` columns. 
+* The `year` in this dataset range from `r min(snp$year)` to `r max(snp$ year)`. 
+* The variable `snp` ranges from `r min(snp$snp)` to `r max(snp$snp)`.
 
-The `unemployment` dataset has `r `dim(unemployment_df)[1]` rows and  `r `dim(unemployment_df)[2]` columns. 
-* The `year` in this dataset range from `r min(pull(unemployment_df, year))` to `r max(pull(unemployment_df, year))`. 
-* The variable `snp` ranges from `r min(pull(unemployment_df, unemployment))` to `r max(pull(unemployment_df, unemployment))`.
+The `unemployment` dataset has `r nrow(unemployment)` rows and  `r ncol(unemployment)` columns. 
+* The `year` in this dataset range from `r min(unemployment$year)` to `r max(unemployment$year)`. 
+* The variable `snp` ranges from `r min(unemployment$unemployment)` to `r max(unemployment$unemployment)`.
