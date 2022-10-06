@@ -1,0 +1,78 @@
+---
+title: "p1805_hw1_jc5457"
+output: github_document
+---
+
+```{r, echo = FALSE, message=FALSE}
+library(tidyverse)
+library(ggridges)
+library(readxl)
+library(dplyr)
+```
+
+# Problem 1
+**Loading the NYC transit dataset**
+```{r}
+transit = read_csv("data/NYC_Transit_Subway_Entrance_And_Exit_Data.csv") %>%
+  janitor::clean_names()%>%
+  select(line, station_name, station_latitude, station_longitude,
+         starts_with("route"), entry, vending, entrance_type, ada) %>%
+  mutate(entry = as.logical(recode(entry, "YES" = "TRUE", "NO" = "FALSE")),
+         vending = as.logical(recode(vending, "YES" = "TRUE", "NO" = "FALSE")))
+```
+
+**Describing the NYC transit dataset**
+* Here, we have the NYC transit data imported, and keep 19 variables from the original csv file, including:`r names(transit)`
+
+* And then, we transfer the two character variables "entry" and "vending" into logical variables by `recode` function.
+
+**Answering questions**
+* The distinct stations in the dataset includes: `r distinct(transit, line, station_name)`
+* The number of ADA complaint station is `r sum(transit$ada=="TRUE")`
+* The proportion of station entrances / exits without vending allow entrance is `r mean(transit$vending)`
+
+**After reformating data**
+```{r}
+
+```
+* The number of distinct stations serve the A train is
+* The number of the stations that serve the A train, and are ADA compliant is 
+
+
+# Problem 2
+**Read, clean, and combine the Mr./Professor. Trash Wheel sheet**
+* give reasonable names
+* omit non-dumpster-specific rows
+* round sports balls and convert into integer, and add a column indicating source of data
+* combine the two data sets
+```{r}
+MR = read_excel("data/Trash Wheel Collection Data.xlsx", 
+                sheet = "Mr. Trash Wheel",
+                range = "A2:N550")  %>% 
+  janitor::clean_names() %>% 
+  drop_na() %>% 
+  mutate(sports_balls = as.integer(sports_balls), 
+         source = "Mr. Trash Wheel")
+
+PROF = read_excel("data/Trash Wheel Collection Data.xlsx", 
+                  sheet = "Professor Trash Wheel",
+                  range = "A2:M97")  %>% 
+  janitor::clean_names() %>% 
+  drop_na() %>% 
+  mutate(year = as.character(year),
+         source = "Professor Trash Wheel")
+
+Trash_Wheel = bind_rows(MR, PROF)
+```
+
+* The number of observations in the resulting dataset is `r count(Trash_Wheel)`,
+* Key variables include: `r names(Trash_Wheel)`
+* The total weight of trash collected by Professor Trash Wheel is 
+`r sum(subset(Trash_Wheel, source == "Professor Trash Wheel")$weight_tons)`
+* The total number of sports balls collected by Mr. Trash Wheel in 2020 is
+`r sum(subset(Trash_Wheel, source == "Mr. Trash Wheel", year = "2020")$sports_balls)`
+
+
+# Problem 3
+
+date = lubridate::parse_date_time2(date,orders ="mdy", cutoff_2000 = 23)
